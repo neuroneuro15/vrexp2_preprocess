@@ -112,9 +112,12 @@ def unrotate_objects(h5_fname, group='/preprocessed/Rigid Body', source_object_n
         obj_pos = obj.Position.copy()
         print('Mean Position before rotation', obj.mean())
         if mean_center:
-            obj_pos.loc[:, ('X', 'Y', 'Z')] -= (source_obj.Position.X.mean(), -y_offset, source_obj.Position.Z.mean())
-
+            obj_pos.loc[:, ('X', 'Y', 'Z')] -= source_obj.Position.mean()
+        
         obj_pos.loc[:, ('X', 'Y', 'Z')] = obj_pos.loc[:, ('X', 'Y', 'Z')] @ rot_mat[:-1, :-1] @ manrot[:-1, :-1]
+
+        obj_pos.loc[:, 'Y'] += source_obj.Position.Y.mean() + y_offset
+
         obj['Position'] = obj_pos
         print('Mean Position before rotation', obj.mean())
 
