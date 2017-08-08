@@ -227,6 +227,17 @@ def add_settings_log(json_fname, h5_fname, **kwargs):
     return None
 
 
+def add_softlink_to_markers(h5_fname):
+    with open(h5_fname) as f:
+        for body_name, body_group in f['preprocessed/Rigid Body'].items():
+            body_group.create_group("Markers")
+            
+            marker_names = [name for name in '/preprocessed/Rigid Body Marker' if body_name in name]
+            for marker_name in marker_names:
+                body_group['Markers'][marker_name] = h5py.SoftLink('/preprocessed/Rigid Body Marker/'+marker_name)    
+    return None
+
+
 def skip_if_conf_file_exists(conf_fname):
     """
     Skips running function if a given file exists. If not, runs functions and creates the file.
@@ -324,6 +335,18 @@ def task_preprocess_all_data():
             'verbosity': 2,
         }
         yield rotate_task
+
+        conf_fname = dirname + '/softlink_added.txt'
+        add_softlinks_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_softlink_to_markers)
+        softlink_task = {
+            'actions': [(add_softlinks_if_no_conf_file, (h5_fname,))],
+            'targets': [conf_fname],
+            # 'file_dep': [h5_fname],
+            'task_dep': [rotate_task['name']],
+            'name': 'softlink: {}'.format(path.basename(h5_fname)),
+            'verbosity': 2,
+        }
+        yield softlink_task
 
 
 if __name__ == '__main__':
