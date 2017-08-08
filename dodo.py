@@ -112,17 +112,25 @@ def unrotate_objects(h5_fname, group='/preprocessed/Rigid Body', source_object_n
         for name in filter(lambda s: 'position' in s.lower(), f.attrs):
             positions = np.matrix(f.attrs[name])
             positions = [rotate_and_offset(np.matrix(pos), rot_matrices, mean_pos.values, (0., y_offset, 0.)).squeeze() for pos in positions]
-            f.attrs[name] = np.array(positions).squeeze()
+            f.attrs[name + ''] = np.array(positions).squeeze()
 
         bodies = f[group]
         body_paths = [bodies[body].name for body in bodies]
+
     
+
     for body in body_paths:
         obj = nested_h5py.read_from_h5_group(h5_fname, path.join(group, body), index_cols=index_cols)
         obj['Position'] = rotate_and_offset(obj.Position.values, rot_matrices, mean_pos.values, (0., y_offset, 0.))
         obj['Orientation'] = rotate_and_offset(obj.Orientation.values, rot_matrices, (0., 0., 0.), (0., 0., 0.))
         
         nested_h5py.write_to_hdf5_group(h5_fname, obj, body + '/', mode='r+', overwrite=True)
+
+    with h5py.File(h5_fname, 'r+') as f:
+        for marker_name, dset in f['preprocessed/Rigid Body Marker/'].items():
+            obj = pd.DataFrame.from_records(dset['Position'][:]).set_index(['Frame', 'Time'])
+            obj[:] = rotate_and_offset(obj[:], rot_matrices, mean_pos.values, (0., y_offset, 0.))
+            dset['Position'][:] = obj.to_records()
 
     return None        
 
