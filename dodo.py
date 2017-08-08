@@ -1,4 +1,5 @@
 import os
+import shutil
 from os import path
 from glob import glob
 import json
@@ -287,6 +288,15 @@ def task_preprocess_all_data():
             'name': 'convert_csv_to_h5: {}'.format(path.basename(h5_fname)),
         }
         yield convert_task
+
+        avi_fname = glob(path.join(path.dirname(csv_fname), '*.avi'))[0]
+        vid_copy_task = {
+            'actions': [(shutil.copy, (avi_fname, dirname))],
+            'targets': [path.join(dirname, path.basename(avi_fname))],
+            'file_dep': [avi_fname],
+            'name': 'copy_video: {}'.format(path.basename(avi_fname)),
+        }
+        yield vid_copy_task
 
         conf_fname = dirname + '/event_log_added.txt'
         add_event_log_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_event_log)
