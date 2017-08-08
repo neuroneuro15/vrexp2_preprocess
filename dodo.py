@@ -227,12 +227,12 @@ def add_settings_log(json_fname, h5_fname, **kwargs):
     return None
 
 
-def add_softlink_to_markers(h5_fname):
-    with open(h5_fname) as f:
+def add_softlink_to_markers(h5_fname, **kwargs):
+    with h5py.File(h5_fname, 'r+') as f:
         for body_name, body_group in f['preprocessed/Rigid Body'].items():
             body_group.create_group("Markers")
             
-            marker_names = [name for name in '/preprocessed/Rigid Body Marker' if body_name in name]
+            marker_names = [name for name in f['/preprocessed/Rigid Body Marker'] if body_name in name]
             for marker_name in marker_names:
                 body_group['Markers'][marker_name] = h5py.SoftLink('/preprocessed/Rigid Body Marker/'+marker_name)    
     return None
