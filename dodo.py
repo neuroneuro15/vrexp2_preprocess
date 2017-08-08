@@ -63,7 +63,7 @@ def add_orientation_dataset(h5_fname, **kwargs):
             if not isinstance(obj, h5py.Dataset) or not 'Rotation' in name:
                 continue
 
-            rot_df = pd.DataFrame.from_records(obj.value).set_index('Frame')
+            rot_df = pd.DataFrame.from_records(obj.value).set_index(['Frame', 'Time'])
             rot_df.columns = rot_df.columns.str.lower()
 
             oris, ori0 = [], rc.Camera().orientation0
@@ -77,8 +77,17 @@ def add_orientation_dataset(h5_fname, **kwargs):
     return None
 
 
+def rotate_and_offset(array, rotation_matrices, mean_pos, pos_offset):
+    dat = array.copy()
+    dat -= mean_pos
+    for matrix in rotation_matrices:
+        dat = dat @ matrix
+    dat[:, 1] += mean_pos[1] + pos_offset[1]
+    return dat
+
+
 def unrotate_objects(h5_fname, group='/preprocessed/Rigid Body', source_object_name='Arena', 
-    add_rotation=10.5, mean_center=True, index_cols=1, y_offset=-0.66, **kwargs):
+    add_rotation=10.5, index_cols=2, y_offset=-0.66, **kwargs):
     """
     Un-rotate the objects in an hdf5 group by either a set rotationa mount, another object's rotation, or both.
 
@@ -90,42 +99,30 @@ def unrotate_objects(h5_fname, group='/preprocessed/Rigid Body', source_object_n
        -mean_center (bool): if the position should also be moved by the source_object's position.  
        
     """
-    # Get rotation
-
-
     source_obj = nested_h5py.read_from_h5_group(h5_fname, path.join(group, source_object_name), index_cols=index_cols)
+    mean_pos = source_obj.Position.mean()
     mean_rot = source_obj.Rotation.mean()
     mean_rot.index = mean_rot.index.str.lower()
     rot_mat = rc.RotationQuaternion(**mean_rot).to_matrix()
-    # assert np.isclose(source_obj.Orientation.mean().values @ rot_mat[:-1, :-1], [0., 0., -1.]).all()
+    manrot = rc.RotationEulerDegrees(x=0, y=add_rotation, z=0).to_matrix()
+    rot_matrices = [rot_mat[:-1, :-1], manrot[:-1, :-1]]
 
-    # Apply rotation
     with h5py.File(h5_fname, 'r+') as f:
+        
+        for name in filter(lambda s: 'position' in s.lower(), f.attrs):
+            positions = np.matrix(f.attrs[name])
+            positions = [rotate_and_offset(np.matrix(pos), rot_matrices, mean_pos.values, (0., y_offset, 0.)).squeeze() for pos in positions]
+            f.attrs[name] = np.array(positions).squeeze()
+
         bodies = f[group]
         body_paths = [bodies[body].name for body in bodies]
-        
-        
-    manrot = rc.RotationEulerDegrees(x=0, y=add_rotation, z=0).to_matrix()
     
     for body in body_paths:
         obj = nested_h5py.read_from_h5_group(h5_fname, path.join(group, body), index_cols=index_cols)
-        obj_pos = obj.Position.copy()
-        print('Mean Position before rotation', obj.mean())
-        if mean_center:
-            obj_pos.loc[:, ('X', 'Y', 'Z')] -= source_obj.Position.mean()
+        obj['Position'] = rotate_and_offset(obj.Position.values, rot_matrices, mean_pos.values, (0., y_offset, 0.))
+        obj['Orientation'] = rotate_and_offset(obj.Orientation.values, rot_matrices, (0., 0., 0.), (0., 0., 0.))
         
-        obj_pos.loc[:, ('X', 'Y', 'Z')] = obj_pos.loc[:, ('X', 'Y', 'Z')] @ rot_mat[:-1, :-1] @ manrot[:-1, :-1]
-
-        obj_pos.loc[:, 'Y'] += source_obj.Position.Y.mean() + y_offset
-
-        obj['Position'] = obj_pos
-        print('Mean Position before rotation', obj.mean())
-
-        obj.Orientation @= rot_mat[:-1, :-1]
-        obj.Orientation @= manrot[:-1, :-1]
-        
-        nested_h5py.write_to_hdf5_group(h5_fname, obj, body + '/',
-                                        mode='r+', overwrite=True)
+        nested_h5py.write_to_hdf5_group(h5_fname, obj, body + '/', mode='r+', overwrite=True)
 
     return None        
 
@@ -217,11 +214,7 @@ def add_settings_log(json_fname, h5_fname, **kwargs):
             sess_data[key] = 0
 
     with h5py.File(h5_fname, 'r+') as f:
-        try:
-            f.attrs.update(sess_data)
-        except TypeError as e:
-            import ipdb
-            ipdb.set_trace()
+        f.attrs.update(sess_data)
 
     return None
 
@@ -237,7 +230,7 @@ def skip_if_conf_file_exists(conf_fname):
         def wrapper(*args, **kwargs):
             
             if path.exists(conf_fname):
-                print(fun.__name__ + 'already made for this file.  Skipping step...')
+                print(fun.__name__ + ' already made for this file.  Skipping step...')
                 return
             else:
                 output = fun(*args, **kwargs)
@@ -320,6 +313,7 @@ def task_preprocess_all_data():
             # 'file_dep': [h5_fname],
             'task_dep': [ori_task['name']],
             'name': 'unrotate: {}'.format(path.basename(h5_fname)),
+            'verbosity': 2,
         }
         yield rotate_task
 
