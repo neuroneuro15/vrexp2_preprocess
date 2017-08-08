@@ -1,6 +1,6 @@
 import os
 import shutil
-from os import path
+from os import path, symlink
 from glob import glob
 import json
 import numpy as np
@@ -239,6 +239,22 @@ def add_softlink_to_markers(h5_fname, **kwargs):
     return None
 
 
+def symlink_to_experiment_directory(dirname):
+    expdir = '/home/nickdg/theta_storage/data/VR_Experiments_Round_2/processed_data_by_experiment'
+    expname = path.split(dirname)[-1].split('_')[0]
+    if expname == 'VR':
+        expname = '_'.join(path.split(dirname)[-1].split('_')[0:2])
+    if 'H' in expname[:6]:
+        expname = 'VRHabit'
+    elif not 'VR' in expname[:3]:
+        expname = 'Unlabeled'
+    
+    if not path.exists(path.join(expdir, expname)):
+        os.makedirs(path.join(expdir, expname))
+    symlink(dirname, path.join(expdir, expname, path.split(dirname)[1]), target_is_directory=True)
+    return None
+
+
 def skip_if_conf_file_exists(conf_fname):
     """
     Skips running function if a given file exists. If not, runs functions and creates the file.
@@ -289,14 +305,22 @@ def task_preprocess_all_data():
         }
         yield convert_task
 
-        avi_fname = glob(path.join(path.dirname(csv_fname), '*.avi'))[0]
-        vid_copy_task = {
-            'actions': [(shutil.copy, (avi_fname, dirname))],
-            'targets': [path.join(dirname, path.basename(avi_fname))],
-            'file_dep': [avi_fname],
-            'name': 'copy_video: {}'.format(path.basename(avi_fname)),
+        symlink_task = {
+            'actions': [(symlink_to_experiment_directory, (dirname,))],
+            # 'targets': [path.join(dirname, path.basename(avi_fname))],
+            'file_dep': [h5_fname],
+            'name': 'symlink_exp: {}'.format(path.basename(h5_fname)),
         }
-        yield vid_copy_task
+        yield symlink_task
+
+        # for avi_fname in glob(path.join(path.dirname(csv_fname), '*.avi')):
+        #     vid_copy_task = {
+        #         'actions': [(shutil.copy, (avi_fname, dirname))],
+        #         'targets': [path.join(dirname, path.basename(avi_fname))],
+        #         'file_dep': [avi_fname],
+        #         'name': 'copy_video: {}'.format(path.basename(avi_fname)),
+        #     }
+        #     yield vid_copy_task
 
         conf_fname = dirname + '/event_log_added.txt'
         add_event_log_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_event_log)
@@ -322,41 +346,41 @@ def task_preprocess_all_data():
         }
         yield settings_task
 
-        conf_fname = dirname + '/ori_added.txt'
-        add_orientation_dataset_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_orientation_dataset)
-        ori_task = {
-            'actions': [(add_orientation_dataset_if_no_conf_file, (h5_fname,))],
-            'targets': [conf_fname],
-            # 'file_dep': [h5_fname],
-            'task_dep': [settings_task['name']],
-            'name': 'add_orientation: {}'.format(path.basename(h5_fname)),
-            'verbosity': 2,
-        }
-        yield ori_task
+        # conf_fname = dirname + '/ori_added.txt'
+        # add_orientation_dataset_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_orientation_dataset)
+        # ori_task = {
+        #     'actions': [(add_orientation_dataset_if_no_conf_file, (h5_fname,))],
+        #     'targets': [conf_fname],
+        #     # 'file_dep': [h5_fname],
+        #     'task_dep': [settings_task['name']],
+        #     'name': 'add_orientation: {}'.format(path.basename(h5_fname)),
+        #     'verbosity': 2,
+        # }
+        # yield ori_task
 
-        conf_fname = dirname + '/unrotated.txt'
-        unrotate_objects_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(unrotate_objects)
-        rotate_task = {
-            'actions': [(unrotate_objects_if_no_conf_file, (h5_fname,))],
-            'targets': [conf_fname],
-            # 'file_dep': [h5_fname],
-            'task_dep': [ori_task['name']],
-            'name': 'unrotate: {}'.format(path.basename(h5_fname)),
-            'verbosity': 2,
-        }
-        yield rotate_task
+        # conf_fname = dirname + '/unrotated.txt'
+        # unrotate_objects_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(unrotate_objects)
+        # rotate_task = {
+        #     'actions': [(unrotate_objects_if_no_conf_file, (h5_fname,))],
+        #     'targets': [conf_fname],
+        #     # 'file_dep': [h5_fname],
+        #     'task_dep': [ori_task['name']],
+        #     'name': 'unrotate: {}'.format(path.basename(h5_fname)),
+        #     'verbosity': 2,
+        # }
+        # yield rotate_task
 
-        conf_fname = dirname + '/softlink_added.txt'
-        add_softlinks_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_softlink_to_markers)
-        softlink_task = {
-            'actions': [(add_softlinks_if_no_conf_file, (h5_fname,))],
-            'targets': [conf_fname],
-            # 'file_dep': [h5_fname],
-            'task_dep': [rotate_task['name']],
-            'name': 'softlink: {}'.format(path.basename(h5_fname)),
-            'verbosity': 2,
-        }
-        yield softlink_task
+        # conf_fname = dirname + '/marker_softlink_added.txt'
+        # add_softlinks_if_no_conf_file = skip_if_conf_file_exists(conf_fname)(add_softlink_to_markers)
+        # marker_softlink_task = {
+        #     'actions': [(add_softlinks_if_no_conf_file, (h5_fname,))],
+        #     'targets': [conf_fname],
+        #     # 'file_dep': [h5_fname],
+        #     'task_dep': [rotate_task['name']],
+        #     'name': 'softlink: {}'.format(path.basename(h5_fname)),
+        #     'verbosity': 2,
+        # }
+        # yield marker_softlink_task
 
 
 if __name__ == '__main__':
